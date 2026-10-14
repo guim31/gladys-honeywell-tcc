@@ -1,61 +1,160 @@
-# Demo Devices Template
+# Honeywell Total Connect Comfort
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+## Overview
 
-## What you get
+This integration brings the **Honeywell / Resideo Wi-Fi thermostats** of the
+**Total Connect Comfort** portal ([mytotalconnectcomfort.com](https://mytotalconnectcomfort.com/portal),
+the United States and Canada) into Gladys: temperatures, humidity, heat and
+cool setpoints, system mode, fan, schedule hold and equipment status, with
+their commands.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+Each thermostat of the account becomes one Gladys device, in the unit the
+thermostat displays (°F or °C).
+
+> Developed without the hardware: feedback welcome. The integration is built
+> on recorded answers of the portal and tested against a simulated portal; it
+> has not yet been tried on a real thermostat.
+
+This integration is not affiliated with Honeywell or Resideo.
+
+## Requirements
+
+- Gladys Assistant 5.2.0 or later.
+- A Total Connect Comfort account (the one of the "Total Connect Comfort" app)
+  with at least one thermostat, for example the RTH6580WF, RTH8580WF, RTH9580WF,
+  TH6320WF, TH8320WF or the Wi-Fi VisionPRO models.
+- **Not supported**: the Lyric and T-series thermostats (T5, T6, T9, T10), and
+  every thermostat managed by the "Resideo" / "Honeywell Home" app. They use
+  another cloud. The European Evohome portal is not supported either.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+In Gladys, open **Integrations → Honeywell Total Connect** and fill in:
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+- **E-mail address** and **Password**: those of your Total Connect Comfort
+  account.
+- **Read the portal every**: 2, 5 (default), 10 or 15 minutes.
+- **Language of the feature names**: the names given to the features when a
+  thermostat is added to Gladys, and the language of the messages (French by
+  default).
 
-## Actions
+Press **Test the connection**: the integration logs in once and lists the
+thermostats it found. Then open the **Discovery** tab and add your thermostats.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+**About account locks.** The portal locks an account after too many failed
+logins, and a locked account also locks you out of the Honeywell app. So the
+integration **never retries a refused password by itself**: it waits until you
+save new credentials or press **Test the connection**. A login answer it does
+not understand is retried at most every 10 minutes, three times, then it stops
+the same way. The session is kept under `/data` (the private volume of the
+integration), so a restart of Gladys does not need a new login.
 
-## Scenes
+## Devices and features
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+One device per thermostat, with the features it has:
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+| Feature                               | What it is                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Indoor temperature                    | The temperature the thermostat reads.                                                                       |
+| Indoor humidity                       | When the thermostat has a humidity sensor.                                                                  |
+| Outdoor temperature, outdoor humidity | When an outdoor sensor is connected to the thermostat.                                                      |
+| Heat setpoint, cool setpoint          | Controllable, in whole °F or half °C, within the limits of the thermostat.                                  |
+| System mode                           | Off, heat, cool, auto (the modes the thermostat allows). Emergency heat reads as "heat".                    |
+| Emergency heat                        | Heat pumps only. Turning it off goes back to "heat", never to "off".                                        |
+| Equipment status                      | Idle, heating or cooling (not shown when the thermostat does not report it).                                |
+| Fan, fan running                      | Auto, on, circulate, follow schedule (those the thermostat offers), and whether the fan runs.               |
+| Schedule hold                         | Follow schedule, until the next period, permanent hold; a vacation hold is shown but set from the app only. |
 
-## Dashboard
+Like on the thermostat itself, changing a setpoint while the schedule runs
+holds it **until the next schedule period**. Use **Schedule hold** to make it
+permanent or to give the thermostat back to its schedule.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+A command is sent at once, shown at once, and the thermostat is read again
+about 15 seconds later.
+
+## Dashboard widget
+
+**Honeywell thermostat**: pick a thermostat in its settings. It shows the
+indoor and outdoor temperatures, the humidity and the setpoints in use (live
+tiles), then the mode, what the equipment does, the fan, the hold and the
+connection. Buttons:
+
+- **Set temperature**: a short form with the setpoints of the current mode,
+  pre-filled, and how long they hold (until the next period, or until you
+  resume the schedule).
+- **Resume schedule** during a hold, or **Hold** to keep the current setpoints.
+
+The Gladys thermostat widget (dashboard) also works with these thermostats:
+create an "external" thermostat in the Gladys thermostat integration and point
+it at the heat setpoint.
+
+## Scene triggers
+
+- **Thermostat connection lost**: Gladys can no longer reach a thermostat.
+  Filter on the thermostat and on the cause: `thermostat_offline` (the
+  thermostat lost its Wi-Fi), `portal_unreachable` (the portal did not answer
+  for three reads in a row) or `login_refused` (the portal refused the login).
+  Variables: `thermostat_name`, `cause`.
+- **Thermostat connection restored**: the thermostat answers again. Variable:
+  `thermostat_name`.
+
+## Scene action
+
+**Hold a temperature until a time**: a temporary hold on one thermostat, which
+goes back to its schedule by itself at the given time (thermostat time,
+rounded up to the quarter hour). Leave a setpoint empty to keep it. Output:
+`until`, the end of the hold (HH:MM).
+
+## Scene examples
+
+- **Guests tonight**: at 6 pm on Saturday, "Hold a temperature until a time"
+  with a heat setpoint of 72 until 23:30. The schedule resumes on its own.
+- **Everybody left**: when the house becomes empty, set **Schedule hold** to
+  "Permanent hold" and the heat setpoint to 62; when someone comes back, set
+  **Schedule hold** to "Follow schedule".
+- **Heating alert**: on "Thermostat connection lost" with the cause
+  `thermostat_offline`, send a message "{{triggerEvent.data.thermostat_name}}
+  is offline".
+
+## Refresh and portal limits
+
+Total Connect Comfort has no public API: the integration uses the web portal
+like a browser does. The portal publishes no quota, but it is slow, and it
+locks accounts it finds too busy. So:
+
+- each thermostat added to Gladys is read once per period (5 minutes by
+  default, 2 at the fastest; Home Assistant reads every 30 seconds);
+- the account list is read only at startup, after a configuration change and
+  on a new search in the Discovery tab;
+- requests go one at a time, and only what changed is sent to Gladys (an
+  unchanged value is sent again every 6 hours, so it never looks stale).
+
+The integration refreshes by itself, with its own timer: it does not depend on
+the polling of the Gladys core.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"Total Connect Comfort refused the e-mail address or the password"**:
+  check them on [mytotalconnectcomfort.com](https://mytotalconnectcomfort.com/portal),
+  then save them again in Gladys.
+- **"The account is locked"**: wait for the portal to unlock it (log in on the
+  website to check), then press **Test the connection**.
+- **"Total Connect Comfort cannot be reached"**: the portal is down or slow;
+  the integration tries again at every period.
+- **A thermostat shows "unreachable"**: it lost its Wi-Fi; check it in the
+  Total Connect Comfort app.
+- **No thermostat found**: the account may be a Resideo / Honeywell Home
+  account (Lyric, T-series), which this integration does not support.
+- Logs: set `LOG_LEVEL=debug` to see every read. Passwords and session
+  cookies are never written to the logs.
+
+## Limitations
+
+- Developed without the hardware: feedback welcome.
+- United States and Canada portal only; not Lyric, T-series, Resideo app or
+  Evohome.
+- Humidifiers, dehumidifiers, schedules and vacation holds are not managed
+  (a vacation hold is shown, not set).
+- Times are those of the thermostat; the portal works in quarters of an hour.
+- The portal is not an official API: Honeywell / Resideo may change it
+  without notice.
