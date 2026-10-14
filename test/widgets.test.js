@@ -1,77 +1,148 @@
+// -----------------------------------------------------------------------------
+// The thermostat widget: a content the core renders exactly as sent, tiles
+// bound to features that exist, and its buttons.
+// -----------------------------------------------------------------------------
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { WIDGET_ACTION, WIDGET_KEY } from '../src/widgets.js';
+import { FEATURE } from '../src/devices.js';
+import { USERNAME } from './helpers/fakePortal.js';
+import { addAll, createWorld, featureId } from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+const IDS = ['1234567', '2345678', '3456789'];
+const settingsOf = (id) => ({ thermostat: `ext:test-integration:thermostat:${id}` });
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
+async function content(world, id, language = 'en') {
+  const ack = await world.gladys.fake.widgetGet(WIDGET_KEY, { settings: settingsOf(id), language });
+  assert.equal(ack.success, true, ack.error);
+  return ack.data.content ?? ack.data;
+}
 
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
-});
-
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
-    );
-  } finally {
-    simulateLanSession(true);
+test('every thermostat, every language: rendered exactly as sent, tiles on real features', async () => {
+  const world = await createWorld();
+  await addAll(world);
+  for (const id of IDS) {
+    const device = world.gladys.fake.discoveredDevices.find((d) => d.external_id.endsWith(id));
+    const featureIds = new Set(device.features.map((f) => f.external_id));
+    for (const language of ['en', 'fr', 'de', 'es']) {
+      const widget = await content(world, id, language);
+      assert.deepEqual(validateWidgetContent(widget), [], `${id} ${language}`);
+      for (const component of widget.components) {
+        if (component.device_feature) {
+          assert.ok(featureIds.has(component.device_feature), `${component.device_feature} exists`);
+        }
+      }
+      const buttons = widget.components.filter((c) => c.type === 'button');
+      assert.ok(buttons.length <= 4);
+      // A choice shown by the icon, never by a style (invisible in dark mode).
+      assert.ok(buttons.every((b) => b.style === undefined));
+    }
   }
+  world.hub.stop();
 });
 
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
+test('the heat pump in auto: both setpoints, the form, a hold button', async () => {
+  const world = await createWorld();
+  await addAll(world);
+  const widget = await content(world, '2345678', 'fr');
+  const tiles = widget.components.filter((c) => c.type === 'value').map((c) => c.label);
+  assert.deepEqual(tiles, ['Intérieur', 'Humidité', 'Extérieur', 'Chauffer à', 'Refroidir à']);
+  const status = widget.components.find((c) => c.type === 'status');
+  assert.deepEqual(
+    status.items.map((item) => `${item.label}: ${item.value}`),
+    [
+      'Mode: Auto',
+      'Équipement: Chauffe',
+      'Ventilation: Auto · en marche',
+      'Programme: Suivi',
+      'Connexion: En ligne',
+    ],
   );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
-});
-
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
-});
-
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+  const [set, hold] = widget.components.filter((c) => c.type === 'button');
+  assert.equal(set.action.key, WIDGET_ACTION.SET_SETPOINTS);
+  assert.deepEqual(
+    set.action.fields.map((f) => [f.key, f.default]),
+    [
+      ['heat', 68],
+      ['cool', 76],
+      ['hold', 'next'],
+    ],
   );
+  assert.equal(set.action.fields[0].label.fr, 'Consigne de chauffage (°F)');
+  assert.equal(set.action.fields[0].label.en, 'Heat setpoint (°F)');
+  assert.equal(hold.action.key, WIDGET_ACTION.PERMANENT_HOLD);
+  world.hub.stop();
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('the widget form sets both setpoints with their hold', async () => {
+  const world = await createWorld();
+  await addAll(world);
+  const ack = await world.gladys.fake.widgetAction(
+    WIDGET_KEY,
+    WIDGET_ACTION.SET_SETPOINTS,
+    {},
+    {
+      settings: settingsOf('2345678'),
+      values: { heat: 69, cool: 75, hold: 'permanent' },
+    },
+  );
+  assert.equal(ack.success, true);
+  const sent = world.portal.commands.at(-1);
+  assert.deepEqual([sent.HeatSetpoint, sent.CoolSetpoint, sent.StatusHeat], [69, 75, 2]);
+  assert.equal(world.gladys.fake.lastState(featureId(world, '2345678', FEATURE.HOLD)), 'permanent');
+  // Then the schedule comes back.
+  const resume = await world.gladys.fake.widgetAction(
+    WIDGET_KEY,
+    WIDGET_ACTION.RESUME_SCHEDULE,
+    {},
+    {
+      settings: settingsOf('2345678'),
+    },
+  );
+  assert.equal(resume.success, true);
+  assert.equal(world.portal.commands.at(-1).StatusHeat, 0);
+  world.hub.stop();
+});
+
+test('a form received without values (older core) changes nothing', async () => {
+  const world = await createWorld();
+  await addAll(world);
+  const sent = world.portal.commands.length;
+  const ack = await world.gladys.fake.widgetAction(
+    WIDGET_KEY,
+    WIDGET_ACTION.SET_SETPOINTS,
+    {},
+    {
+      settings: settingsOf('2345678'),
+    },
+  );
+  assert.equal(ack.success, false);
+  assert.equal(world.portal.commands.length, sent);
+  world.hub.stop();
+});
+
+test('empty states say what to do', async () => {
+  const unconfigured = await createWorld({ config: {} });
+  const ack = await unconfigured.gladys.fake.widgetGet(WIDGET_KEY, {
+    settings: {},
+    language: 'de',
+  });
+  const widget = ack.data.content ?? ack.data;
+  assert.match(widget.components[0].text, /Total-Connect-Comfort-Konto/);
+  unconfigured.hub.stop();
+
+  const refused = await createWorld({ config: { username: USERNAME, password: 'wrong' } });
+  const blocked = await refused.gladys.fake.widgetGet(WIDGET_KEY, {
+    settings: settingsOf('1234567'),
+    language: 'es',
+  });
+  assert.match((blocked.data.content ?? blocked.data).components[0].text, /rechazado/);
+  refused.hub.stop();
+
+  const world = await createWorld();
+  const pick = await world.gladys.fake.widgetGet(WIDGET_KEY, { settings: {}, language: 'fr' });
+  assert.match((pick.data.content ?? pick.data).components[0].text, /Choisissez un thermostat/);
+  world.hub.stop();
 });

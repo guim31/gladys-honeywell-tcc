@@ -28,8 +28,21 @@ Gladys before reporting a problem.
 
 ## Scope
 
-In scope: the code of this repository and the Docker image it publishes.
+In scope: the code of this repository and the Docker image it publishes, in
+particular:
+
+- the **credentials** of the Total Connect Comfort account: the e-mail address
+  and the password live in the Gladys configuration of the integration (the
+  password as a `secret` field). They only leave the container in the login
+  form posted to `https://mytotalconnectcomfort.com`, and are never written to
+  the logs;
+- the **session** kept in `/data/tcc-session.json`: the portal's session
+  cookies (they open the account while they are valid), keyed by a SHA-256 hash
+  of the e-mail address, written owner-only (mode 600). Never the password;
+- the **network**: the container only talks to Gladys and, in HTTPS, to
+  `mytotalconnectcomfort.com`. It opens no port.
 
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+the Total Connect Comfort portal and the thermostats, which belong to
+Honeywell / Resideo.

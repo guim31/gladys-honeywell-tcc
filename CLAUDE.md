@@ -16,8 +16,8 @@ its only runtime dependency. It started from the official JavaScript template.
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/app.test.js              # one file
+node --test --test-name-pattern "hold"    # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -31,16 +31,22 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          SDK bootstrap only: registerHandlers, shutdown, connect()
+src/app.js                        the hub: timer, discovery, states, commands, triggers, widget, actions
+src/tcc/client.js                 HTTP client of the Total Connect Comfort portal (login, cookies, JSON)
+src/tcc/portal.js                 login policy (never retry a refused password), one-at-a-time queue
+src/tcc/model.js                  pure: portal answers -> thermostat, and the commands that change it
+src/devices.js                    Gladys device and states of a thermostat (feature keys are forever)
+src/widgets.js                    the "thermostat" dashboard widget (pure builders) and its texts
+src/i18n.js                       feature names, option labels, messages in en/fr/de/es
+src/store.js                      the portal session under /data (cookies, never the password)
+src/issues.js                     repeated failures logged once, recovery once
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+scripts/probe.mjs                 read-only probe of the real portal (one refused login by default)
+gladys-assistant-integration.json manifest: name, config_schema, actions, triggers, widget...
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys, same sections
+test/                             node --test, against the SDK's fake Gladys and test/helpers/fakePortal.js
+test/fixtures/tcc/                portal answers (recorded shapes, identifiers replaced; see its README)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +76,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in four languages (English, French, German with
+  "du", Spanish with "usted"): action messages, manifest texts, feature names,
+  widget texts, and `docs/{en,fr,de,es}.md` with the same sections, kept in
+  sync. `test/i18n.test.js` enforces it.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +241,52 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Honeywell Total Connect Comfort (cette intégration)
+
+**L'API.** Pas d'API publique : c'est la session web du portail
+`https://mytotalconnectcomfort.com` (US/Canada), lue dans mkmer/AIOSomecomfort et
+kk7ds/somecomfort (GPL-3.0 : lus, rien copié). Connexion par formulaire
+(`POST /portal`, champs `UserName`, `Password`, `timeOffset`, `RememberMe`), cookie
+`.ASPXAUTH_TRUEHOME`, puis des points JSON avec `X-Requested-With: XMLHttpRequest` :
+`POST /portal/Location/GetLocationListData/?page=N&filter=` (paginé, page vide = fin),
+`GET /portal/Device/CheckDataSession/<DeviceID>` (`latestData.uiData`, `fanData`,
+`deviceLive`, `communicationLost`), `POST /portal/Device/SubmitControlScreenChanges`
+(tous les champs, `null` = inchangé, réponse `{"success":1}`). Une session expirée
+répond une redirection vers la page de connexion, ou la page elle-même en HTML.
+
+**Valeurs.** `SystemSwitchPosition` : 0 chauffage d'urgence, 1 chauffage, 2 arrêt,
+3 climatisation, 4 et 5 auto (on écrit 4). `StatusHeat`/`StatusCool` : 0 programme,
+1 temporaire (jusqu'à `HeatNextPeriod`/`CoolNextPeriod`, en quarts d'heure depuis
+minuit, heure du thermostat), 2 permanent ; `IsInVacationHoldMode` pour les vacances.
+`fanMode` : 0 auto, 1 marche, 2 brassage, 3 selon le programme, chacun avec son
+`fanMode…Allowed`. `EquipmentOutputStatus` : 0 repos, 1 chauffe, 2 refroidit, **`null`
+= inconnu** (certains modèles ne l'envoient jamais : ne pas publier « repos »).
+Sonde extérieure absente : 128 avec `OutdoorTemperatureAvailable: false`. Consignes
+dans l'unité d'affichage (`DisplayUnits` `F`/`C`) : °F entiers, °C au demi-degré, avec
+un `Deadband` à respecter entre chaud et froid.
+
+**Pièges.**
+
+- **Verrouillage de compte** : le portail verrouille après trop d'échecs, et le
+  verrou bloque aussi l'application Honeywell de l'utilisateur. Règle de
+  `src/tcc/portal.js` : un mot de passe refusé ou un verrou n'est **jamais** réessayé
+  seul (seulement nouveaux identifiants ou « Tester la connexion ») ; une réponse de
+  connexion incomprise au plus toutes les 10 min, trois fois ; une session refusée
+  juste après sa connexion n'est pas renouvelée en boucle. Ne pas affaiblir.
+- Le texte d'un compte verrouillé **n'est documenté nulle part** :
+  `test/fixtures/tcc/login-locked.html` est inventé. La page de refus contient
+  « Login was unsuccessful. » dans `validation-summary-errors` (enregistrement 2016).
+- Le cookie d'authentification a un `expires` malformé : on l'ignore (un `expires`
+  passé lu comme valide effacerait la session).
+- Le proxy des sessions de code refuse `mytotalconnectcomfort.com` (403) :
+  `scripts/probe.mjs` est à lancer depuis une machine qui a le réseau.
+- Le chauffage d'urgence n'existe pas dans `THERMOSTAT_MODE` : il se lit « chauffage »
+  sur le mode et a son interrupteur. L'éteindre revient au chauffage, jamais à
+  l'arrêt (une maison sans chauffage est pire qu'un chauffage d'appoint coûteux).
+- Le front de Gladys n'affiche le nom d'une fonctionnalité que si une autre a le
+  **même type** sur l'appareil (`matchFeature` compare le type seul) ; sinon il
+  affiche le nom de l'appareil. D'où « Ventilation en marche » en `switch/binary` :
+  avec le chauffage d'urgence, deux `binary`, les deux noms s'affichent.
+- `DEVICE_FEATURE_TYPES.SENSOR.DECIMAL` (et non `TEMPERATURE_SENSOR.DECIMAL`, qui
+  n'existe pas dans le SDK) pour les capteurs de température et d'humidité.

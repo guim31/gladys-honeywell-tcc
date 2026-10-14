@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Honeywell - My Total Connect Comfort</title>
+  </head>
+  <body>
+    <!-- INVENTED: the wording of the portal for a locked account is not
+     documented anywhere public. Same page as login-refused.html, with a lock
+     message in the error summary. To replace with a real one when seen. -->
+    <form action="/portal" method="post">
+      <div class="validation-summary-errors">
+        <span
+          >Your account has been locked due to too many unsuccessful login attempts. Please try
+          again later.</span
+        >
+        <ul>
+          <li style="display: none"></li>
+        </ul>
+      </div>
+      <input id="UserName" name="UserName" type="text" value="" />
+      <input id="Password" name="Password" type="password" />
+    </form>
+  </body>
+</html>
