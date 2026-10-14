@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-14
+
 ### Added
 
 - Honeywell / Resideo Wi-Fi thermostats of the Total Connect Comfort portal
@@ -35,4 +37,5 @@ the notes of the version's GitHub Release.
 - Feature names, messages, widget and documentation in English, French,
   German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-honeywell-tcc/commits/main
+[Unreleased]: https://github.com/guim31/gladys-honeywell-tcc/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/guim31/gladys-honeywell-tcc/releases/tag/v1.0.1

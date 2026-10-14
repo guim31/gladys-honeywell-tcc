@@ -1,6 +1,6 @@
 {
   "name": "gladys-honeywell-tcc",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Gladys Assistant integration for the Honeywell / Resideo Wi-Fi thermostats of the Total Connect Comfort portal.",
   "type": "module",
