@@ -38,7 +38,7 @@ User documentation: [English](docs/en.md) · [Français](docs/fr.md) ·
 
 ## Requirements
 
-- Gladys Assistant **5.2.0** or later (widget buttons that open a form).
+- Gladys Assistant **5.3.0** or later (catalog countries; 5.2.0 for widget buttons that open a form).
 - A Total Connect Comfort account with at least one Wi-Fi thermostat
   (RTH6580WF, RTH8580WF, RTH9580WF, TH6320WF, TH8320WF, VisionPRO Wi-Fi...).
 - Outbound HTTPS access from Gladys to `mytotalconnectcomfort.com`.

@@ -20,7 +20,7 @@ Cette intégration n'est affiliée ni à Honeywell ni à Resideo.
 
 ## Prérequis
 
-- Gladys Assistant 5.2.0 ou plus récent.
+- Gladys Assistant 5.3.0 ou plus récent.
 - Un compte Total Connect Comfort (celui de l'application « Total Connect
   Comfort ») avec au moins un thermostat, par exemple RTH6580WF, RTH8580WF,
   RTH9580WF, TH6320WF, TH8320WF ou les VisionPRO Wi-Fi.
