@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-13
+
 ### Changed
 
 - Declared for the United States and Canada only (`countries: ["US", "CA"]`): the Gladys catalog of an
@@ -43,5 +45,6 @@ the notes of the version's GitHub Release.
 - Feature names, messages, widget and documentation in English, French,
   German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-honeywell-tcc/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/guim31/gladys-honeywell-tcc/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/guim31/gladys-honeywell-tcc/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/guim31/gladys-honeywell-tcc/releases/tag/v1.0.1
